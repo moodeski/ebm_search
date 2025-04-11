@@ -1,62 +1,163 @@
-# KM_Search : Application de Recherche de Documents
 
-## Table des Matières
-- [Introduction](#introduction)
-- [Fonctionnalités](#fonctionnalités)
-- [Architecture et Technologies](#architecture-et-technologies)
-- [Installation et Configuration](#installation-et-configuration)
-- [Utilisation](#utilisation)
-- [Indexation et Recherche](#indexation-et-recherche)
-- [Déploiement et Présentation Live](#déploiement-et-présentation-live)
-- [Auteurs](#auteurs)
-- [Licence](#licence)
+# EBM Search - Document Management System
 
-## Introduction
-KM_Search est une application web conçue pour l'entreprise **Kankou Moussa** afin de gérer et rechercher l'ensemble de ses documents.  
-L'application permet la création, la modification et la suppression de documents, ainsi qu'une recherche avancée en full-text sur le contenu des documents avec un filtrage par type (ex. : CV, fiche de poste, évaluation annuelle).  
-Ce projet s'inscrit dans le cadre du Master 1 en Data Science (UIE) et doit être présenté en live.
+[![Laravel](https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)](https://laravel.com)
+[![Elasticsearch](https://img.shields.io/badge/Elasticsearch-005571?style=for-the-badge&logo=elasticsearch&logoColor=white)](https://www.elastic.co)
+[![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com)
 
-## Fonctionnalités
-- **Création de documents**  
-  Lors de la création, l'utilisateur renseigne :
-  - `doc_id` : Identifiant unique (généré automatiquement)
-  - `doc_name` : Nom du document
-  - `doc_type` : Type du document (sélection dynamique depuis l'interface)
-  - `doc_content` : Contenu textuel extrait automatiquement (PDF ou Word)
-  - `doc_format` : Format du document (word, pdf)
-  - `doc_insert_date` et `doc_updated_date` : Dates d'insertion et de modification (gérées automatiquement)
-  - `doc_file_full_path` : Chemin du fichier stocké sur le disque
+Application web de gestion et de recherche de documents avec recherche full-text et gestion dynamique des types de documents.
 
-- **Modification et suppression de documents**  
-  Possibilité de mettre à jour ou de supprimer un document avec suppression du fichier associé et de son index dans Elasticsearch.
+## ✨ Fonctionnalités principales
 
-- **Recherche avancée**  
-  La recherche s'effectue sur le champ `doc_content` avec :
-  - Un champ texte pour la recherche full-text (avec surlignage des résultats)
-  - Un filtre facultatif par type de document (un seul type à la fois)
-  - Affichage du nom du document, d'un extrait surligné et d'un lien de téléchargement
+- 🔍 Recherche full-text dans le contenu des documents
+- 📁 Gestion complète des documents (CRUD)
+- 🏷️ Création dynamique de types de documents
+- 📄 Support des formats PDF et Word
+- 🎯 Surlignage des termes recherchés
+- 🔒 Gestion sécurisée des fichiers
+- 📈 Indexation temps réel avec Elasticsearch
+- 📦 Stockage des fichiers sur disque
 
-- **Indexation**  
-  Les documents (et les types de documents) sont indexés dans Elasticsearch pour assurer une recherche rapide et efficace.
+## 🚀 Installation
 
-## Architecture et Technologies
-- **Backend** : PHP (Laravel 12)
-- **Base de données** : MongoDB
-- **Moteur de recherche** : Elasticsearch (configuration avec analyseur français)
-- **Frontend** : Blade Templates
-- **Stockage** : Fichiers stockés en local
-- **Extraction de contenu** : Utilisation de bibliothèques tierces pour extraire le texte des fichiers PDF et Word
-
-## Installation et Configuration
 ### Prérequis
-- PHP >= 8.0
+- PHP 8.0+
 - Composer
-- MongoDB
-- Elasticsearch (compatible avec la version configurée)
-- Extensions PHP : mbstring, etc.
+- MongoDB 4.4+
+- Elasticsearch 7.10+
+- Node.js 14+
+- Serveur web (Apache/Nginx) ou PHP built-in server
 
-### Installation
-1. **Cloner le dépôt**  
+### Étapes d'installation
+1. Cloner le dépôt :
+```bash
+git clone https://github.com/votre-utilisateur/ebm-search.git
+cd ebm-search
+```
+
+2. Installer les dépendances :
+```bash
+composer install
+npm install && npm run build
+```
+
+3. Configurer l'environnement :
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+4. Modifier le fichier `.env` :
+```ini
+APP_NAME=EBM_Search
+APP_ENV=local
+APP_DEBUG=true
+
+DB_CONNECTION=mongodb
+DB_HOST=127.0.0.1
+DB_PORT=27017
+DB_DATABASE=ebm_search
+
+ELASTICSEARCH_HOST=localhost:9200
+ELASTICSEARCH_USERNAME=<votre nom d'utilisateur>
+ELASTICSEARCH_PASSWORD=<votre mot de passe>
+
+FILESYSTEM_DISK=public
+```
+
+5. Créer le lien de stockage :
+```bash
+php artisan storage:link
+```
+
+6. Démarrer les services :
+```bash
+# Elasticsearch (selon votre installation)
+sudo systemctl start elasticsearch
+
+# Serveur de développement
+php artisan serve
+```
+
+## 🛠 Configuration Elasticsearch
+
+Créer les indexes nécessaires :
+L’indexation est automatiquement prise en charge par l’application.
+
+## 📚 Utilisation
+
+### Accès à l'application
+- URL : `http://localhost:8000`
+
+### Gestion des documents
+1. **Ajouter un document**
+   - Formats supportés : PDF, Word
+   - Extraction automatique du texte
+   - Métadonnées automatiquement remplies
+
+2. **Recherche avancée**
+   - Champ libre de recherche
+   - Filtrage par type de document
+   - Surlignage des résultats
+
+3. **Gestion des types**
+   - Création/Modification dynamique
+   - Liste mise à jour en temps réel
+
+## 📦 Dépendances principales
+- [Laravel 12](https://laravel.com)
+- [Elasticsearch PHP Client](https://www.elastic.co/guide/en/elasticsearch/client/php-api/current/index.html)
+- [Smalot PDF Parser](https://github.com/smalot/pdfparser)
+- [PHPWord](https://github.com/PHPOffice/PHPWord)
+- [MongoDB Laravel Integration](https://github.com/jenssegers/laravel-mongodb)
+
+## 🔍 Exemple de recherche Elasticsearch
+```json
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "doc_content": "exemple de recherche"
+          }
+        }
+      ],
+      "filter": [
+        {
+          "term": {
+            "doc_type": "CV"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+## 🚨 Dépannage
+
+### Problèmes courants
+1. **Erreur de connexion Elasticsearch**
+   - Vérifier les logs Elasticsearch
+   - Confirmer les credentials dans `.env`
+
+2. **Problème d'extraction de texte**
+   - Vérifier les dépendances : `pdftotext` et `phpword` (composer require)
+   - Vérifier les permissions des fichiers
+
+3. **Erreur mbstring**
+   - Activer l'extension PHP mbstring (php.ini) :
    ```bash
-   git clone https://votre-repo-url.git
-   cd KM_Search
+   sudo apt-get install php-mbstring
+   sudo systemctl restart apache2
+   ```
+
+## 📄 Licence
+MIT License - Voir le fichier [LICENSE](LICENSE) pour plus de détails
+
+---
+
+**Développé par** : Souleymane MAIGA et Modibo Kane NIARE
+**Client** : Entreprise Kankou Moussa  
+**Date de livraison** : 21/04/2025
