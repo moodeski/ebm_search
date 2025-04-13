@@ -121,48 +121,52 @@ class DocumentController extends Controller
     // Stocker un nouveau document
     public function store(Request $request)
     {
-        $request->validate([
-            'doc_id'        => 'unique:documents,doc_id',
-            'doc_name'      => 'required|string|max:255',
-            'doc_type'      => 'required|string|max:100',
-            'doc_file'      => 'required|file|mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        ]);
+        try {
+            $request->validate([
+                'doc_id'        => 'unique:documents,doc_id',
+                'doc_name'      => 'required|string|max:255',
+                'doc_type'      => 'required|string|max:100',
+                'doc_file'      => 'required|file|mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            ]);
 
-        // Vérification que le type existe
-        if (!DocumentType::where('name', $request->doc_type)->exists()) {
-            return redirect()->back()->withErrors(['doc_type' => 'Type de document invalide']);
+            // Vérification que le type existe
+            if (!DocumentType::where('name', $request->doc_type)->exists()) {
+                throw new \Exception('Type de document invalide');
+            }
+
+            // Génération de l'ID et stockage du fichier
+            $docId = Str::uuid()->toString();
+            $file = $request->file('doc_file');
+            $fileName = $docId . '_' . $file->getClientOriginalName();
+            $filePath = $file->storeAs('documents', $fileName, 'public');
+
+            // Détermination automatique du format
+            $docFormat = strtolower($file->getClientOriginalExtension()) === 'pdf' ? 'pdf' : 'word';
+
+            // Extraction automatique du contenu
+            $docContent = $this->extractTextFromFile($file->getRealPath(), $docFormat);
+            if (!$docContent) {
+                throw new \Exception('Échec de l\'extraction du texte');
+            }
+
+            // Création du document
+            $document = Document::create([
+                'doc_id'             => $docId,
+                'doc_name'           => $request->doc_name,
+                'doc_type'           => $request->doc_type,
+                'doc_content'        => $docContent,  // Texte extrait automatiquement
+                'doc_format'         => $docFormat,   // Format déterminé automatiquement
+                'doc_insert_date'    => Carbon::now(),
+                'doc_updated_date'   => Carbon::now(),
+                'doc_file_full_path' => $filePath,    // Chemin relatif seulement
+            ]);
+
+            $this->indexDocumentInElastic($document);
+
+            return redirect()->route('documents.index')->with('success', 'Document créé avec succès.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
         }
-
-        // Génération de l'ID et stockage du fichier
-        $docId = Str::uuid()->toString();
-        $file = $request->file('doc_file');
-        $fileName = $docId . '_' . $file->getClientOriginalName();
-        $filePath = $file->storeAs('documents', $fileName, 'public');
-
-        // Détermination automatique du format
-        $docFormat = strtolower($file->getClientOriginalExtension()) === 'pdf' ? 'pdf' : 'word';
-
-        // Extraction automatique du contenu
-        $docContent = $this->extractTextFromFile($file->getRealPath(), $docFormat);
-        if (!$docContent) {
-            return back()->withErrors(['doc_file' => 'Échec de l\'extraction du texte']);
-        }
-
-        // Création du document
-        $document = Document::create([
-            'doc_id'             => $docId,
-            'doc_name'           => $request->doc_name,
-            'doc_type'           => $request->doc_type,
-            'doc_content'        => $docContent,  // Texte extrait automatiquement
-            'doc_format'         => $docFormat,   // Format déterminé automatiquement
-            'doc_insert_date'    => Carbon::now(),
-            'doc_updated_date'   => Carbon::now(),
-            'doc_file_full_path' => $filePath,    // Chemin relatif seulement
-        ]);
-
-        $this->indexDocumentInElastic($document);
-
-        return redirect()->route('documents.index')->with('success', 'Document créé avec succès.');
     }
 
     /**
@@ -349,7 +353,11 @@ class DocumentController extends Controller
                 ];
             }
 
-            $docTypes = DocumentType::pluck('name', 'name')->toArray();
+            if ($request->wantsJson()) {
+                return response()->json($documents);
+            }
+
+            $docTypes = DocumentType::pluck('name')->toArray();
             $selectedType = $request->input('doc_type');
 
             return view('documents.search', compact('documents', 'docTypes', 'queryText', 'docType', 'selectedType'));
