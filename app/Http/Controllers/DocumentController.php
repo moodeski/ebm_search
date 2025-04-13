@@ -122,11 +122,24 @@ class DocumentController extends Controller
     public function store(Request $request)
     {
         try {
+            Log::info('Début du traitement du document', [
+                'file_name' => $request->file('doc_file')?->getClientOriginalName(),
+                'file_extension' => $request->file('doc_file')?->getClientOriginalExtension(),
+                'doc_type' => $request->doc_type
+            ]);
             $request->validate([
                 'doc_id'        => 'unique:documents,doc_id',
                 'doc_name'      => 'required|string|max:255',
                 'doc_type'      => 'required|string|max:100',
-                'doc_file'      => 'required|file|mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'doc_file'      => [
+                    'required',
+                    'file',
+                    'mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain',
+                    'max:10240', // 10MB max
+                ],
+            ], [
+                'doc_file.mimetypes' => 'Le fichier doit être au format PDF, DOCX ou TXT',
+                'doc_file.max' => 'Le fichier ne doit pas dépasser 10MB'
             ]);
 
             // Vérification que le type existe
@@ -141,13 +154,33 @@ class DocumentController extends Controller
             $filePath = $file->storeAs('documents', $fileName, 'public');
 
             // Détermination automatique du format
-            $docFormat = strtolower($file->getClientOriginalExtension()) === 'pdf' ? 'pdf' : 'word';
+            $extension = strtolower($file->getClientOriginalExtension());
+            Log::info('Extension du fichier', ['extension' => $extension]);
+            
+            $docFormat = match($extension) {
+                'pdf' => 'pdf',
+                'docx' => 'word',
+                'txt' => 'text',
+                default => throw new \Exception('Format de fichier non supporté: ' . $extension)
+            };
+            
+            Log::info('Format déterminé', ['format' => $docFormat]);
 
             // Extraction automatique du contenu
+            Log::info('Début de l\'extraction du texte', [
+                'file_path' => $file->getRealPath(),
+                'format' => $docFormat
+            ]);
+            
             $docContent = $this->extractTextFromFile($file->getRealPath(), $docFormat);
             if (!$docContent) {
+                Log::error('Échec de l\'extraction du texte');
                 throw new \Exception('Échec de l\'extraction du texte');
             }
+            
+            Log::info('Extraction du texte réussie', [
+                'content_length' => strlen($docContent)
+            ]);
 
             // Création du document
             $document = Document::create([
@@ -163,8 +196,26 @@ class DocumentController extends Controller
 
             $this->indexDocumentInElastic($document);
 
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Document créé avec succès',
+                    'document' => $document
+                ]);
+            }
+
             return redirect()->route('documents.index')->with('success', 'Document créé avec succès.');
         } catch (\Exception $e) {
+            Log::error('Erreur lors du traitement du document', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'message' => $e->getMessage()
+                ], 422);
+            }
+
             return back()->withErrors(['error' => $e->getMessage()]);
         }
     }
@@ -372,6 +423,136 @@ class DocumentController extends Controller
      * @param \App\Models\Document $document
      * @throws \Exception Si l'indexation échoue
      */
+    /**
+     * Extrait le texte d'un fichier PDF, Word ou TXT
+     * 
+     * @param string $filePath Chemin complet du fichier
+     * @param string $format Format du fichier ('pdf', 'word' ou 'text')
+     * @return string|null Texte extrait ou null en cas d'échec
+     */
+    private function extractTextFromFile(string $filePath, string $format): ?string
+    {
+        try {
+            return match($format) {
+                'pdf' => $this->extractTextFromPdf($filePath),
+                'word' => $this->extractTextFromWord($filePath),
+                'text' => $this->cleanExtractedText(file_get_contents($filePath)),
+                default => throw new \InvalidArgumentException("Format de fichier non supporté: $format")
+            };
+        } catch (\Exception $e) {
+            Log::error("Erreur d'extraction - Fichier: $filePath", [
+                'format' => $format,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Extrait le texte d'un fichier PDF
+     */
+    private function extractTextFromPdf(string $filePath): ?string
+    {
+        try {
+            $parser = new \Smalot\PdfParser\Parser();
+            $pdf = $parser->parseFile($filePath);
+            return $this->cleanExtractedText($pdf->getText());
+        } catch (\Exception $e) {
+            Log::error("Erreur lors de l'extraction du PDF : " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Extrait le texte d'un fichier Word
+     */
+    private function extractTextFromWord(string $filePath): ?string
+    {
+        try {
+            if (!class_exists('\PhpOffice\PhpWord\IOFactory')) {
+                throw new \RuntimeException("La bibliothèque PHPWord n'est pas installée");
+            }
+
+            Log::info('Début de l\'extraction du fichier Word', ['file_path' => $filePath]);
+            
+            // Vérification du type MIME
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $filePath);
+            finfo_close($finfo);
+            
+            Log::info('Type MIME détecté', ['mime_type' => $mimeType]);
+            
+            if (!in_array($mimeType, [
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+                'application/msword' // .doc
+            ])) {
+                throw new \RuntimeException("Le fichier n'est pas un document Word valide (MIME: {$mimeType})");
+            }
+
+            // Chargement du document Word
+            $phpWord = \PhpOffice\PhpWord\IOFactory::load($filePath);
+            $text = '';
+            
+            // Extraction du texte de chaque section
+            foreach ($phpWord->getSections() as $section) {
+                foreach ($section->getElements() as $element) {
+                    if ($element instanceof \PhpOffice\PhpWord\Element\TextRun) {
+                        foreach ($element->getElements() as $textElement) {
+                            if ($textElement instanceof \PhpOffice\PhpWord\Element\Text) {
+                                $text .= $textElement->getText() . "\n";
+                            }
+                        }
+                    } elseif ($element instanceof \PhpOffice\PhpWord\Element\Text) {
+                        $text .= $element->getText() . "\n";
+                    } elseif ($element instanceof \PhpOffice\PhpWord\Element\Table) {
+                        foreach ($element->getRows() as $row) {
+                            foreach ($row->getCells() as $cell) {
+                                foreach ($cell->getElements() as $cellElement) {
+                                    if ($cellElement instanceof \PhpOffice\PhpWord\Element\Text) {
+                                        $text .= $cellElement->getText() . "\t";
+                                    }
+                                }
+                            }
+                            $text .= "\n";
+                        }
+                    }
+                }
+                $text .= "\n";
+            }
+
+            if (empty(trim($text))) {
+                Log::warning('Aucun texte extrait du fichier Word');
+                throw new \RuntimeException("Aucun texte n'a pu être extrait du document Word");
+            }
+
+            Log::info('Extraction du fichier Word réussie', [
+                'text_length' => strlen($text)
+            ]);
+
+            return $this->cleanExtractedText($text);
+        } catch (\Exception $e) {
+            Log::error("Erreur lors de l'extraction du Word", [
+                'error' => $e->getMessage(),
+                'file_path' => $filePath,
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw new \Exception("Erreur lors de l'extraction du fichier Word : " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Nettoie le texte extrait
+     */
+    private function cleanExtractedText(string $text): string
+    {
+        // Supprime les caractères non imprimables
+        $text = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $text);
+        // Remplace les espaces multiples par un seul espace
+        $text = preg_replace('/\s+/', ' ', $text);
+        return trim($text);
+    }
+
     public function indexDocumentInElastic(Document $document): void
     {
         try {
@@ -436,91 +617,5 @@ class DocumentController extends Controller
         return $disk->download($document->doc_file_full_path);
     }
 
-    /**
-     * Extrait le texte d'un fichier PDF ou Word
-     * 
-     * @param string $filePath Chemin complet du fichier
-     * @param string $format Format du fichier ('pdf' ou 'word')
-     * @return string|null Texte extrait ou null en cas d'échec
-     */
-    private function extractTextFromFile(string $filePath, string $format): ?string
-    {
-        try {
-            if ($format === 'pdf') {
-                return $this->extractTextFromPdf($filePath);
-            } elseif ($format === 'word') {
-                return $this->extractTextFromWord($filePath);
-            }
 
-            throw new \InvalidArgumentException("Format de fichier non supporté: $format");
-        } catch (\Exception $e) {
-            Log::error("Erreur d'extraction - Fichier: $filePath", [
-                'format' => $format,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return null;
-        }
-    }
-
-    /**
-     * Extrait le texte d'un fichier PDF
-     */
-    private function extractTextFromPdf(string $filePath): string
-    {
-        if (!class_exists(\Smalot\PdfParser\Parser::class)) {
-            throw new \RuntimeException("La bibliothèque PDFParser n'est pas installée");
-        }
-
-        $parser = new \Smalot\PdfParser\Parser();
-        $pdf = $parser->parseFile($filePath);
-
-        // Vérification de l'objet retourné
-        if (!method_exists($pdf, 'getText')) {
-            throw new \RuntimeException("La méthode getText() n'existe pas sur l'objet PDF");
-        }
-
-        $text = $pdf->getText();
-        return $this->cleanExtractedText($text);
-    }
-
-    /**
-     * Extrait le texte d'un fichier Word
-     */
-    private function extractTextFromWord(string $filePath): string
-    {
-        if (!class_exists(\PhpOffice\PhpWord\IOFactory::class)) {
-            throw new \RuntimeException("La bibliothèque PHPWord n'est pas installée");
-        }
-
-        $phpWord = \PhpOffice\PhpWord\IOFactory::load($filePath);
-        $text = '';
-
-        foreach ($phpWord->getSections() as $section) {
-            foreach ($section->getElements() as $element) {
-                if ($element instanceof \PhpOffice\PhpWord\Element\TextRun) {
-                    foreach ($element->getElements() as $textElement) {
-                        /** @var \PhpOffice\PhpWord\Element\Text $textElement */
-                        if (method_exists($textElement, 'getText')) {
-                            $text .= $textElement->getText();
-                        }
-                    }
-                }
-            }
-        }
-
-        return $this->cleanExtractedText($text);
-    }
-
-
-    /**
-     * Nettoie le texte extrait
-     */
-    private function cleanExtractedText(string $text): string
-    {
-        // Suppression des espaces multiples
-        $text = preg_replace('/\s+/', ' ', $text);
-        // Suppression des caractères non imprimables
-        return trim(preg_replace('/[^\P{C}\n]+/u', '', $text));
-    }
 }

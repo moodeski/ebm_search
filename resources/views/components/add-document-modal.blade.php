@@ -75,7 +75,7 @@
 
                     {{-- Upload de fichier --}}
                     <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700">Fichier* (PDF ou Word)</label>
+                        <label class="block text-sm font-medium text-gray-700">Fichier* (PDF, Word ou TXT)</label>
                         <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md"
                              x-data="{ dragover: false }"
                              @dragover.prevent="dragover = true"
@@ -91,13 +91,13 @@
                                         <input type="file" 
                                                name="doc_file" 
                                                class="sr-only" 
-                                               accept=".pdf,.doc,.docx" 
+                                               accept=".pdf,.doc,.docx,.txt" 
                                                required
                                                @change="fileName = $event.target.files[0].name">
                                     </label>
                                     <p class="pl-1">ou glisser-déposer</p>
                                 </div>
-                                <p class="text-xs text-gray-500" x-text="fileName || 'PDF ou Word uniquement'"></p>
+                                <p class="text-xs text-gray-500" x-text="fileName || 'PDF, Word ou TXT uniquement'"></p>
                             </div>
                         </div>
                     </div>
@@ -162,11 +162,17 @@
             });
 
             if (!response.ok) {
-                throw new Error('Une erreur est survenue lors de l\'envoi du document');
+                const data = await response.json();
+                throw new Error(data.message || 'Une erreur est survenue lors de l\'envoi du document');
             }
 
-            window.dispatchEvent(new CustomEvent('document-uploaded'));
-            window.dispatchEvent(new CustomEvent('documents-updated'));
+            const data = await response.json();
+            this.success = true;
+            setTimeout(() => {
+                this.show = false;
+                this.success = false;
+                window.dispatchEvent(new CustomEvent('documents-updated'));
+            }, 2000);
             
         } catch (error) {
             this.error = error.message;
