@@ -314,21 +314,38 @@ class DocumentController extends Controller
 
             $response = $this->elasticClient->search($params);
             $results = $response->asArray();
-
+            
+            // Log the Elasticsearch response for debugging
+            Log::debug('Elasticsearch response:', ['response' => $results]);
+            
             // Traitement des résultats avec gestion d'erreur pour mb_strimwidth
             $documents = [];
             foreach ($results['hits']['hits'] ?? [] as $hit) {
-                $content = $hit['_source']['doc_content'] ?? '';
+                // Log each hit for debugging
+                Log::debug('Processing hit:', ['hit' => $hit]);
+                
+                if (!isset($hit['_source'])) {
+                    Log::warning('Hit missing _source:', ['hit' => $hit]);
+                    continue;
+                }
+                
+                $source = $hit['_source'];
+                if (!isset($source['doc_id'])) {
+                    Log::warning('Document missing doc_id:', ['source' => $source]);
+                    continue;
+                }
+                
+                $content = $source['doc_content'] ?? '';
                 $highlight = isset($hit['highlight']['doc_content'])
                     ? implode(' [...] ', $hit['highlight']['doc_content'])
-                    : Str::limit($content, 200); // Utilisez Str::limit au lieu de mb_strimwidth
+                    : Str::limit($content, 200);
 
                 $documents[] = [
-                    'doc_id' => $hit['_source']['doc_id'],
-                    'doc_name' => $hit['_source']['doc_name'],
-                    'doc_type' => $hit['_source']['doc_type'],
+                    'doc_id' => $source['doc_id'],
+                    'doc_name' => $source['doc_name'] ?? 'Unknown',
+                    'doc_type' => $source['doc_type'] ?? 'Unknown',
                     'highlight' => $highlight,
-                    'doc_file_full_path' => $hit['_source']['doc_file_full_path']
+                    'doc_file_full_path' => $source['doc_file_full_path'] ?? ''
                 ];
             }
 
