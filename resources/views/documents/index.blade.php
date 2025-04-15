@@ -54,7 +54,11 @@
                                 {{ substr($document->doc_content, 0, 100) }}{{ strlen($document->doc_content) > 100 ? '...' : '' }}
                             </p>
                         </div>
-                        <div class="card-footer bg-transparent border-top-0">
+                        <div class="card-footer bg-transparent">
+                            <div class="small text-muted mb-2">
+                                <div><i class="bi bi-calendar-plus"></i> Créé le: {{ $document->created_at->format('d/m/Y H:i') }}</div>
+                                <div><i class="bi bi-calendar-check"></i> Modifié le: {{ $document->updated_at->format('d/m/Y H:i') }}</div>
+                            </div>
                             <div class="d-flex justify-content-end gap-2">
                                 <a href="{{ route('documents.download', $document->doc_id) }}" 
                                    class="btn btn-sm btn-outline-secondary" title="Télécharger">
