@@ -17,6 +17,7 @@
                 <div class="mb-3">
                     <label class="form-label">Type de document*</label>
                     <select name="doc_type" class="form-select" required>
+                        <option value="" disabled selected>Choisir un type...</option>
                         @foreach($docTypes as $type)
                             <option value="{{ $type }}">{{ $type }}</option>
                         @endforeach
