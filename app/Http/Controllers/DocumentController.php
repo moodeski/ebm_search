@@ -134,11 +134,11 @@ class DocumentController extends Controller
                 'doc_file'      => [
                     'required',
                     'file',
-                    'mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain',
+                    'mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                     'max:10240', // 10MB max
                 ],
             ], [
-                'doc_file.mimetypes' => 'Le fichier doit être au format PDF, DOCX ou TXT',
+                'doc_file.mimetypes' => 'Le fichier doit être au format PDF ou DOCX',
                 'doc_file.max' => 'Le fichier ne doit pas dépasser 10MB'
             ]);
 
@@ -160,7 +160,6 @@ class DocumentController extends Controller
             $docFormat = match($extension) {
                 'pdf' => 'pdf',
                 'docx' => 'word',
-                'txt' => 'text',
                 default => throw new \Exception('Format de fichier non supporté: ' . $extension)
             };
             
