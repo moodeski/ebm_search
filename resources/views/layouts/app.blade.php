@@ -29,5 +29,13 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Gestion de la fermeture des alertes
+            document.querySelectorAll('.alert-dismissible').forEach(alert => {
+                new bootstrap.Alert(alert)
+            });
+        });
+    </script>
 </body>
 </html>

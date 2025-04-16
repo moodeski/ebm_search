@@ -156,13 +156,13 @@ class DocumentController extends Controller
             // Détermination automatique du format
             $extension = strtolower($file->getClientOriginalExtension());
             Log::info('Extension du fichier', ['extension' => $extension]);
-            
-            $docFormat = match($extension) {
+
+            $docFormat = match ($extension) {
                 'pdf' => 'pdf',
                 'docx' => 'word',
                 default => throw new \Exception('Format de fichier non supporté: ' . $extension)
             };
-            
+
             Log::info('Format déterminé', ['format' => $docFormat]);
 
             // Extraction automatique du contenu
@@ -170,13 +170,13 @@ class DocumentController extends Controller
                 'file_path' => $file->getRealPath(),
                 'format' => $docFormat
             ]);
-            
+
             $docContent = $this->extractTextFromFile($file->getRealPath(), $docFormat);
             if (!$docContent) {
                 Log::error('Échec de l\'extraction du texte');
                 throw new \Exception('Échec de l\'extraction du texte');
             }
-            
+
             Log::info('Extraction du texte réussie', [
                 'content_length' => strlen($docContent)
             ]);
@@ -368,27 +368,27 @@ class DocumentController extends Controller
 
             $response = $this->elasticClient->search($params);
             $results = $response->asArray();
-            
+
             // Log the Elasticsearch response for debugging
             Log::debug('Elasticsearch response:', ['response' => $results]);
-            
+
             // Traitement des résultats avec gestion d'erreur pour mb_strimwidth
             $documents = [];
             foreach ($results['hits']['hits'] ?? [] as $hit) {
                 // Log each hit for debugging
                 Log::debug('Processing hit:', ['hit' => $hit]);
-                
+
                 if (!isset($hit['_source'])) {
                     Log::warning('Hit missing _source:', ['hit' => $hit]);
                     continue;
                 }
-                
+
                 $source = $hit['_source'];
                 if (!isset($source['doc_id'])) {
                     Log::warning('Document missing doc_id:', ['source' => $source]);
                     continue;
                 }
-                
+
                 $content = $source['doc_content'] ?? '';
                 $highlight = isset($hit['highlight']['doc_content'])
                     ? implode(' [...] ', $hit['highlight']['doc_content'])
@@ -432,7 +432,7 @@ class DocumentController extends Controller
     private function extractTextFromFile(string $filePath, string $format): ?string
     {
         try {
-            return match($format) {
+            return match ($format) {
                 'pdf' => $this->extractTextFromPdf($filePath),
                 'word' => $this->extractTextFromWord($filePath),
                 'text' => $this->cleanExtractedText(file_get_contents($filePath)),
@@ -474,14 +474,14 @@ class DocumentController extends Controller
             }
 
             Log::info('Début de l\'extraction du fichier Word', ['file_path' => $filePath]);
-            
+
             // Vérification du type MIME
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mimeType = finfo_file($finfo, $filePath);
             finfo_close($finfo);
-            
+
             Log::info('Type MIME détecté', ['mime_type' => $mimeType]);
-            
+
             if (!in_array($mimeType, [
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
                 'application/msword' // .doc
@@ -492,7 +492,7 @@ class DocumentController extends Controller
             // Chargement du document Word
             $phpWord = \PhpOffice\PhpWord\IOFactory::load($filePath);
             $text = '';
-            
+
             // Extraction du texte de chaque section
             foreach ($phpWord->getSections() as $section) {
                 foreach ($section->getElements() as $element) {
@@ -615,6 +615,4 @@ class DocumentController extends Controller
         $disk = Storage::disk('public');
         return $disk->download($document->doc_file_full_path);
     }
-
-
 }
