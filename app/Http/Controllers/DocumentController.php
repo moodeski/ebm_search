@@ -236,13 +236,15 @@ class DocumentController extends Controller
     // Mise à jour d'un document
     public function update(Request $request, $id)
     {
+        // Récupération du document
         $document = Document::findOrFail($id);
 
+        // Validation des champs
         $request->validate([
-            'doc_id' => 'unique:documents,doc_id,' . $document->doc_id,
+            'doc_id' => 'unique:documents,doc_id,' . $document->doc_id, // Ignore l'ID courant
             'doc_name' => 'required|string|max:255',
             'doc_type' => 'required|string|max:100',
-            'doc_file' => 'nullable|file|mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'doc_file' => 'nullable|file|mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document', // PDF ou DOCX
         ]);
 
         // Vérification que le type existe
@@ -286,7 +288,9 @@ class DocumentController extends Controller
     // Suppression d'un document
     public function destroy($id)
     {
+        // Récupération du document
         $document = Document::findOrFail($id);
+        
         // Supprimer le fichier du disque
         Storage::disk('public')->delete($document->doc_file_full_path);
 
@@ -435,7 +439,6 @@ class DocumentController extends Controller
             return match ($format) {
                 'pdf' => $this->extractTextFromPdf($filePath),
                 'word' => $this->extractTextFromWord($filePath),
-                'text' => $this->cleanExtractedText(file_get_contents($filePath)),
                 default => throw new \InvalidArgumentException("Format de fichier non supporté: $format")
             };
         } catch (\Exception $e) {

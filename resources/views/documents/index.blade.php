@@ -2,6 +2,13 @@
 
 @section('content')
 <div class="container">
+    
+    @if(session('success'))
+        <div class="alert alert-success mb-4">
+            {{ session('success') }}
+        </div>
+    @endif
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Documents disponibles</h1>
         <a href="{{ route('documents.create') }}" class="btn btn-primary">

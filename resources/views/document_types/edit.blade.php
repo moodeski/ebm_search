@@ -25,8 +25,7 @@
                     <input type="text" 
                            class="form-control" 
                            id="name" 
-                           name="name" 
-                           required
+                           name="name"
                            value="{{ old('name', $documentType->name) }}">
                 </div>
 

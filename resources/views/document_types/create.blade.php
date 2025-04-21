@@ -25,7 +25,6 @@
                            class="form-control" 
                            id="name" 
                            name="name" 
-                           required
                            value="{{ old('name') }}"
                            placeholder="Ex: CV, Fiche de poste...">
                 </div>
