@@ -31,7 +31,7 @@ Application web de gestion et de recherche de documents avec recherche full-text
 ### Étapes d'installation
 1. Cloner le dépôt :
 ```bash
-git clone https://github.com/votre-utilisateur/ebm-search.git
+git clone https://github.com/moodeski/ebm_search.git
 cd ebm-search
 ```
 
@@ -56,11 +56,11 @@ APP_DEBUG=true
 DB_CONNECTION=mongodb
 DB_HOST=127.0.0.1
 DB_PORT=27017
-DB_DATABASE=ebm_search
+DB_DATABASE=db_name
 
 ELASTICSEARCH_HOST=localhost:9200
-ELASTICSEARCH_USERNAME=<votre nom d'utilisateur>
-ELASTICSEARCH_PASSWORD=<votre mot de passe>
+ELASTICSEARCH_USERNAME=username
+ELASTICSEARCH_PASSWORD=password
 
 FILESYSTEM_DISK=public
 ```
@@ -146,15 +146,15 @@ L’indexation est automatiquement prise en charge par l’application.
    - Vérifier les dépendances : `pdftotext` et `phpword` (composer require)
    - Vérifier les permissions des fichiers
 
-3. **Erreur mbstring**
-   - Activer l'extension PHP mbstring (php.ini) :
+3. **Erreur mbstring ou mongodb**
+   - Activer l'extension PHP mbstring ou mongodb.dll (php.ini) :
    ```bash
    sudo apt-get install php-mbstring
    sudo systemctl restart apache2
    ```
 
 ## 📄 Licence
-MIT License - Voir le fichier [LICENSE](LICENSE) pour plus de détails
+MIT License - Voir le fichier [LICENSE.md](LICENSE) pour plus de détails
 
 ---
 

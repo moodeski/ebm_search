@@ -7,72 +7,144 @@ use App\Models\DocumentType;
 use Elastic\Elasticsearch\ClientBuilder;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Controller pour gérer les types de documents
+ * - CRUD basique (index, create, store, edit, update, destroy)
+ * - Indexation des types dans Elasticsearch
+ */
 class DocumentTypeController extends Controller
 {
+    /**
+     * Instance du client Elasticsearch
+     * @var \Elastic\Elasticsearch\Client
+     */
     protected $elasticClient;
-    // Afficher la liste des types de documents
+
+    /**
+     * Affiche la liste de tous les types de documents
+     * Route : GET /document_types
+     * @return \Illuminate\View\View
+     */
     public function index()
     {
+        // Récupère tous les enregistrements du modèle DocumentType
         $documentTypes = DocumentType::all();
+
+        // Passe la collection à la vue resources/views/document_types/index.blade.php
         return view('document_types.index', compact('documentTypes'));
     }
 
-    // Afficher le formulaire de création d’un nouveau type
+    /**
+     * Montre le formulaire de création d'un nouveau type de document
+     * Route : GET /document_types/create
+     * @return \Illuminate\View\View
+     */
     public function create()
     {
         return view('document_types.create');
     }
 
-    // Stocker le nouveau type de document
+    /**
+     * Enregistre un nouveau type de document en base et dans Elasticsearch
+     * Route : POST /document_types
+     * @param  Request  $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function store(Request $request)
     {
+        // Validation des données entrantes
         $request->validate([
             'name' => 'required|string|max:100|unique:document_types,name',
         ]);
 
-        $documentType = DocumentType::create(['name' => $request->name]);
+        // Création en base de données
+        $documentType = DocumentType::create([
+            'name' => $request->name,
+        ]);
 
+        // Indexation du nouveau type dans Elasticsearch
         $this->indexDocumentTypeInElastic($documentType);
 
-        return redirect()->route('document_types.index')->with('success', 'Type de document créé avec succès.');
+        // Redirection vers la liste avec un message de succès
+        return redirect()
+            ->route('document_types.index')
+            ->with('success', 'Type de document créé avec succès.');
     }
 
-    // Afficher le formulaire d’édition d’un type de document
+    /**
+     * Affiche le formulaire d'édition pour un type existant
+     * Route : GET /document_types/{id}/edit
+     * @param  int  $id
+     * @return \Illuminate\View\View
+     */
     public function edit($id)
     {
+        // Récupère ou échoue si non trouvé
         $documentType = DocumentType::findOrFail($id);
+
+        // Passe l'entité à la vue resources/views/document_types/edit.blade.php
         return view('document_types.edit', compact('documentType'));
     }
 
-    // Mettre à jour le type de document
+    /**
+     * Met à jour un type de document existant
+     * Route : PUT/PATCH /document_types/{id}
+     * @param  Request  $request
+     * @param  int      $id
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function update(Request $request, $id)
     {
+        // Récupère l'entité
         $documentType = DocumentType::findOrFail($id);
 
+        // Validation (ignore l'ID courant pour la règle unique)
         $request->validate([
             'name' => 'required|string|max:100|unique:document_types,name,' . $documentType->_id,
         ]);
 
-        $documentType->update(['name' => $request->name]);
+        // Mise à jour du nom
+        $documentType->update([
+            'name' => $request->name,
+        ]);
 
-        return redirect()->route('document_types.index')->with('success', 'Type de document mis à jour.');
+        // Redirection avec message
+        return redirect()
+            ->route('document_types.index')
+            ->with('success', 'Type de document mis à jour.');
     }
 
-    // Supprimer un type de document
+    /**
+     * Supprime un type de document
+     * Route : DELETE /document_types/{id}
+     * @param  int  $id
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function destroy($id)
     {
+        // Récupère ou échoue si non trouvé
         $documentType = DocumentType::findOrFail($id);
+
+        // Suppression en base
         $documentType->delete();
 
-        return redirect()->route('document_types.index')->with('success', 'Type de document supprimé.');
+        // Redirection avec message
+        return redirect()
+            ->route('document_types.index')
+            ->with('success', 'Type de document supprimé.');
     }
 
+    /**
+     * Indexe un type de document dans Elasticsearch
+     * @param  DocumentType  $documentType
+     * @return void
+     */
     public function indexDocumentTypeInElastic(DocumentType $documentType)
     {
-        // Récupère la première configuration
+        // Récupère la configuration Elasticsearch (premier hôte)
         $config = config('elasticsearch.hosts')[0];
 
-        // Construit une URL pour le host de la même manière que dans DocumentController
+        // Construit la chaîne de connexion selon présence d'auth
         if (!empty($config['user']) && !empty($config['pass'])) {
             $hostString = sprintf(
                 "%s://%s:%s@%s:%s",
@@ -91,34 +163,36 @@ class DocumentTypeController extends Controller
             );
         }
 
-        // Initialisation du client Elasticsearch en passant un tableau de chaînes
+        // Initialise le client Elasticsearch
         $this->elasticClient = ClientBuilder::create()
             ->setHosts([$hostString])
             ->setRetries($config['retries'])
             ->build();
 
-        // Vérifie si l'index 'document_types' existe ; s'il n'existe pas, le créer
+        // Vérifie si l'index existe, sinon le crée
         try {
             $this->elasticClient->indices()->get(['index' => 'document_types']);
         } catch (\Elastic\Elasticsearch\Exception\ElasticsearchException $e) {
             if ($e->getCode() === 404) {
-                // Utilisation d'un analyzer défini en configuration ou 'standard' par défaut
+                // Utilise l'analyzer défini ou 'standard'
                 $analyzer = $config['analyzer'] ?? 'standard';
                 $this->createDocumentTypeIndex($analyzer);
             } else {
+                // Log d'erreur si autre exception
                 Log::error("Erreur Elasticsearch dans indexDocumentTypeInElastic: " . $e->getMessage());
             }
         }
 
-        // Prépare les paramètres d'indexation pour le type de document
+        // Prépare les données pour l'indexation
         $params = [
             'index' => 'document_types',
-            'id'    => $documentType->_id, // Vous pouvez adapter le champ d'identifiant si nécessaire
+            'id'    => $documentType->_id,
             'body'  => [
                 'name' => $documentType->name,
             ],
         ];
 
+        // Tente d'indexer le document
         try {
             $this->elasticClient->index($params);
         } catch (\Exception $e) {
@@ -126,6 +200,11 @@ class DocumentTypeController extends Controller
         }
     }
 
+    /**
+     * Crée l'index Elasticsearch pour les types de documents
+     * @param  string  $analyzer
+     * @return void
+     */
     private function createDocumentTypeIndex(string $analyzer = 'standard'): void
     {
         $params = [
@@ -135,19 +214,21 @@ class DocumentTypeController extends Controller
                     'analysis' => [
                         'analyzer' => [
                             'default' => [
-                                'type' => $analyzer
-                            ]
-                        ]
-                    ]
+                                'type' => $analyzer,
+                            ],
+                        ],
+                    ],
                 ],
                 'mappings' => [
                     'properties' => [
-                        'name' => ['type' => 'keyword']
-                    ]
-                ]
-            ]
+                        // Mappage du champ name en tant que mot-clé (keyword)
+                        'name' => ['type' => 'keyword'],
+                    ],
+                ],
+            ],
         ];
 
+        // Création de l'index
         $this->elasticClient->indices()->create($params);
     }
 }
